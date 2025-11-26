@@ -92,4 +92,30 @@ public class NB {
             }
         }
     }
+
+    /* input:  <word, sentiment>
+     * output: <word, pos_wordcount@neg_wordcount>
+     */
+    public static class Reduce_Training extends Reducer<Text, Text, Text, Text> 
+    {       
+        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
+        {
+            context.getCounter(Global_Counters.FEATURES_SIZE).increment(1);
+
+            int positive_counter = 0;
+            int negative_counter = 0;
+
+            // for each word, count the occurrences in tweets with positive/negative sentiment
+            for(Text value : values)
+            {
+                String sentiment = value.toString();
+                if(sentiment.equals("POSITIVE"))
+                    positive_counter++;
+                else
+                    negative_counter++;
+            }
+
+            context.write(key, new Text(String.valueOf(positive_counter) + "@" + String.valueOf(negative_counter)));
+        }
+    }
 }
