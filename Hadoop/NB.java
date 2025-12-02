@@ -255,4 +255,80 @@ public class NB {
             }
         }
     }
+
+    public static void main(String[] args) throws Exception {
+        // paths to directories were input, inbetween and final job outputs are stored
+        Path input_dir = new Path(args[0]);
+        Path training_dir = new Path("training");
+        Path testing_dir = new Path(args[1]);
+        Path output_dir = new Path("output");
+
+        Configuration conf = new Configuration();
+
+        FileSystem fs = FileSystem.get(conf);
+        if (fs.exists(training_dir))
+            fs.delete(training_dir, true);
+        if (fs.exists(output_dir))
+            fs.delete(output_dir, true);
+
+        long start_time = System.nanoTime();
+
+        Job training_job = Job.getInstance(conf, "Training");
+        training_job.setJarByClass(NB.class);
+        training_job.setMapperClass(Map_Training.class);
+        training_job.setReducerClass(Reduce_Training.class);
+        training_job.setNumReduceTasks(3);
+        training_job.setMapOutputKeyClass(Text.class);
+        training_job.setMapOutputValueClass(Text.class);
+        training_job.setOutputKeyClass(Text.class);
+        training_job.setOutputValueClass(Text.class);
+        TextInputFormat.addInputPath(training_job, input_dir);
+        TextInputFormat.setMaxInputSplitSize(training_job, Long.valueOf(args[2]));
+        TextOutputFormat.setOutputPath(training_job, training_dir);
+        training_job.waitForCompletion(true);
+
+        int tweets_size = Math
+                .toIntExact(training_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
+        conf.set("tweets_size", String.valueOf(tweets_size));
+        int pos_tweets_size = Math
+                .toIntExact(training_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
+        conf.set("pos_tweets_size", String.valueOf(pos_tweets_size));
+        int neg_tweets_size = Math
+                .toIntExact(training_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
+        conf.set("neg_tweets_size", String.valueOf(neg_tweets_size));
+        int pos_words_size = Math
+                .toIntExact(training_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
+        conf.set("pos_words_size", String.valueOf(pos_words_size));
+        int neg_words_size = Math
+                .toIntExact(training_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
+        conf.set("neg_words_size", String.valueOf(neg_words_size));
+        int features_size = Math
+                .toIntExact(training_job.getCounters().findCounter(Global_Counters.FEATURES_SIZE).getValue());
+        conf.set("features_size", String.valueOf(features_size));
+
+        Job testing_job = Job.getInstance(conf, "Testing");
+        testing_job.setJarByClass(NB.class);
+        testing_job.setMapperClass(Map_Testing.class);
+        testing_job.setMapOutputKeyClass(Text.class);
+        testing_job.setMapOutputValueClass(Text.class);
+        testing_job.setOutputKeyClass(Text.class);
+        testing_job.setOutputValueClass(Text.class);
+        TextInputFormat.addInputPath(testing_job, testing_dir);
+        TextInputFormat.setMaxInputSplitSize(testing_job, Long.valueOf(args[3]));
+        TextOutputFormat.setOutputPath(testing_job, output_dir);
+        testing_job.waitForCompletion(true);
+
+        System.out.println("EXECUTION DURATION: " + (System.nanoTime() - start_time) / 1000000000F + " seconds");
+
+        int tp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_POSITIVE).getValue());
+        int fp = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_POSITIVE).getValue());
+        int tn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.TRUE_NEGATIVE).getValue());
+        int fn = Math.toIntExact(testing_job.getCounters().findCounter(Global_Counters.FALSE_NEGATIVE).getValue());
+
+        System.out.println("\nCONFUSION MATRIX:");
+        System.out.printf("%-10s %-10s \n", tp, fp);
+        System.out.printf("%-10s %-10s \n\n", fn, tn);
+
+        System.out.printf("%-25s %-10s \n", "ACCURACY: ", ((double) (tp + tn)) / (tp + tn + fp + fn));
+    }
 }
