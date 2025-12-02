@@ -264,3 +264,35 @@ public class NB {
             }
         }
     }
+    
+    public static void main(String[] args) throws Exception 
+    {
+        // paths to directories were input, inbetween and final job outputs are stored
+        Path input_dir = new Path(args[0]);
+        Path training_dir = new Path("training");
+        Path testing_dir = new Path(args[1]);
+        Path output_dir = new Path("output");
+
+        Configuration conf = new Configuration();
+
+        FileSystem fs = FileSystem.get(conf);
+        if(fs.exists(training_dir))
+            fs.delete(training_dir, true);
+        if(fs.exists(output_dir))
+            fs.delete(output_dir, true);
+
+        long start_time = System.nanoTime();
+
+        Job training_job = Job.getInstance(conf, "Training");
+        training_job.setJarByClass(NB.class);
+        training_job.setMapperClass(Map_Training.class);
+        training_job.setReducerClass(Reduce_Training.class); 
+        training_job.setNumReduceTasks(3);   
+        training_job.setMapOutputKeyClass(Text.class);
+        training_job.setMapOutputValueClass(Text.class);
+        training_job.setOutputKeyClass(Text.class);
+        training_job.setOutputValueClass(Text.class);
+        TextInputFormat.addInputPath(training_job, input_dir);
+        TextInputFormat.setMaxInputSplitSize(training_job, Long.valueOf(args[2]));
+        TextOutputFormat.setOutputPath(training_job, training_dir);
+        training_job.waitForCompletion(true);
