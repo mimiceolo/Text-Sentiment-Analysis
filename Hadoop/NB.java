@@ -306,9 +306,10 @@ public class NB {
                 .toIntExact(training_job.getCounters().findCounter(Global_Counters.FEATURES_SIZE).getValue());
         conf.set("features_size", String.valueOf(features_size));
 
+        
         Job testing_job = Job.getInstance(conf, "Testing");
         testing_job.setJarByClass(NB.class);
-        testing_job.setMapperClass(Map_Testing.class);
+        testing_job.setMapperClass(Map_Testing.class);  
         testing_job.setMapOutputKeyClass(Text.class);
         testing_job.setMapOutputValueClass(Text.class);
         testing_job.setOutputKeyClass(Text.class);
