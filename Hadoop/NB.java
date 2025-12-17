@@ -17,14 +17,15 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.Counters;
 
 import java.io.*;
+import java.io.IOException;
 import java.util.*;
-
-import javax.naming.Context;
-
 import java.nio.charset.StandardCharsets;
 
-public class NB {
-    public static enum Global_Counters {
+
+public class NB
+{
+    public static enum Global_Counters 
+    {
         TWEETS_SIZE,
         POS_TWEETS_SIZE,
         NEG_TWEETS_SIZE,
@@ -37,22 +38,25 @@ public class NB {
         FALSE_NEGATIVE
     }
 
-    /*
-     * input: <byte_offset, line_of_tweet>
+
+
+    /* input:  <byte_offset, line_of_tweet>
      * output: <word, sentiment>
      */
-    public static class Map_Training extends Mapper<Object, Text, Text, Text> {
-        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+    public static class Map_Training extends Mapper<Object, Text, Text, Text> 
+    {
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
+        {
             context.getCounter(Global_Counters.TWEETS_SIZE).increment(1);
 
             String line = value.toString();
             String[] columns = line.split(",");
 
-            // if the columns are more than 4, that means the text of the post had commas
-            // inside,
+            // if the columns are more than 4, that means the text of the post had commas inside,  
             // so stitch the last columns together to form the full text of the tweet
-            if (columns.length > 4) {
-                for (int i = 4; i < columns.length; i++)
+            if(columns.length > 4)
+            {
+                for(int i=4; i<columns.length; i++)
                     columns[3] += columns[i];
             }
 
@@ -60,52 +64,56 @@ public class NB {
             String tweet_text = columns[3];
 
             // clean the text of the tweet from links...
-            tweet_text = tweet_text.replaceAll(
-                    "(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})",
-                    "")
-                    .replaceAll("(#|@|&).*?\\w+", "") // mentions, hashtags, special characters...
-                    .replaceAll("\\d+", "") // numbers...
-                    .replaceAll("[^a-zA-Z ]", " ") // punctuation...
-                    .toLowerCase() // turn every character left to lowercase...
-                    .trim() // trim the spaces before & after the whole string...
-                    .replaceAll("\\s+", " "); // and get rid of double spaces
+            tweet_text = tweet_text.replaceAll("(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})", "")
+                                .replaceAll("(#|@|&).*?\\w+", "")   // mentions, hashtags, special characters...
+                                .replaceAll("\\d+", "")             // numbers...
+                                .replaceAll("[^a-zA-Z ]", " ")      // punctuation...
+                                .toLowerCase()                      // turn every character left to lowercase...
+                                .trim()                             // trim the spaces before & after the whole string...
+                                .replaceAll("\\s+", " ");           // and get rid of double spaces
 
             String sentiment_label = "POSITIVE";
 
-            if (tweet_sentiment.equals("1")) {
+            if(tweet_sentiment.equals("1"))
+            {
                 context.getCounter(Global_Counters.POS_TWEETS_SIZE).increment(1);
                 context.getCounter(Global_Counters.POS_WORDS_SIZE).increment(tweet_text.split("\\s+").length);
-            } else {
+            }
+            else
+            {
                 context.getCounter(Global_Counters.NEG_TWEETS_SIZE).increment(1);
                 context.getCounter(Global_Counters.NEG_WORDS_SIZE).increment(tweet_text.split("\\s+").length);
                 sentiment_label = "NEGATIVE";
             }
 
-            if (tweet_text != null && !tweet_text.trim().isEmpty()) {
+
+            if(tweet_text != null && !tweet_text.trim().isEmpty())
+            {
                 String[] tweet_words = tweet_text.split(" ");
 
-                for (String word : tweet_words)
+                for(String word : tweet_words)
                     context.write(new Text(word), new Text(sentiment_label));
-            }
+            }      
         }
     }
 
-    /*
-     * input: <word, sentiment>
+    /* input:  <word, sentiment>
      * output: <word, pos_wordcount@neg_wordcount>
      */
-    public static class Reduce_Training extends Reducer<Text, Text, Text, Text> {
-        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+    public static class Reduce_Training extends Reducer<Text, Text, Text, Text> 
+    {       
+        public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException 
+        {
             context.getCounter(Global_Counters.FEATURES_SIZE).increment(1);
 
             int positive_counter = 0;
             int negative_counter = 0;
 
-            // for each word, count the occurrences in tweets with positive/negative
-            // sentiment
-            for (Text value : values) {
+            // for each word, count the occurrences in tweets with positive/negative sentiment
+            for(Text value : values)
+            {
                 String sentiment = value.toString();
-                if (sentiment.equals("POSITIVE"))
+                if(sentiment.equals("POSITIVE"))
                     positive_counter++;
                 else
                     negative_counter++;
@@ -115,16 +123,17 @@ public class NB {
         }
     }
 
-    /*
-     * input: <byte_offset, line_of_tweet>
+
+
+    /* input: <byte_offset, line_of_tweet>
      * output: <tweet@tweet_text, sentiment>
      */
-    public static class Map_Testing extends Mapper<Object, Text, Text, Text> {
+    public static class Map_Testing extends Mapper<Object, Text, Text, Text> 
+    {
         int features_size, tweets_size, pos_tweets_size, neg_tweets_size, pos_words_size, neg_words_size;
         Double pos_class_probability, neg_class_probability;
 
-        // hashmaps with each word as key and its number of occurrences in each class as
-        // value
+        // hashmaps with each word as key and its number of occurrences in each class as value
         HashMap<String, Integer> pos_words = new HashMap<String, Integer>();
         HashMap<String, Integer> neg_words = new HashMap<String, Integer>();
 
@@ -132,12 +141,12 @@ public class NB {
         HashMap<String, Double> pos_words_probabilities = new HashMap<String, Double>();
         HashMap<String, Double> neg_words_probabilities = new HashMap<String, Double>();
 
-        // lists holding all probabilities to be multiplied together, along with the
-        // positive/negative class probability
+        // lists holding all probabilities to be multiplied together, along with the positive/negative class probability
         ArrayList<Double> pos_probabilities_list = new ArrayList<Double>();
         ArrayList<Double> neg_probabilities_list = new ArrayList<Double>();
 
-        protected void setup(Context context) throws IOException, InterruptedException {
+        protected void setup(Context context) throws IOException, InterruptedException 
+        {
             // load all counters to be used for the calculation of the probabilities
             features_size = Integer.parseInt(context.getConfiguration().get("features_size"));
             tweets_size = Integer.parseInt(context.getConfiguration().get("tweets_size"));
@@ -149,21 +158,23 @@ public class NB {
             pos_class_probability = ((double) pos_tweets_size) / tweets_size;
             neg_class_probability = ((double) neg_tweets_size) / tweets_size;
 
-            // load the model of the last training job and fill two hashmaps of words with
-            // the number of
+            // load the model of the last training job and fill two hashmaps of words with the number of
             // occurrences in positive and negative tweets
             Path training_model = new Path("training");
             FileSystem model_fs = training_model.getFileSystem(context.getConfiguration());
             FileStatus[] file_status = model_fs.listStatus(training_model);
 
-            for (FileStatus i : file_status) {
+            for(FileStatus i : file_status)
+            {
                 Path current_file_path = i.getPath();
 
-                if (i.isFile()) {
+                if(i.isFile())
+                {
                     BufferedReader br = new BufferedReader(new InputStreamReader(model_fs.open(current_file_path)));
-                    String line;
+                    String line; 
 
-                    while ((line = br.readLine()) != null) {
+                    while((line = br.readLine()) != null)
+                    {
                         String[] columns = line.toString().split("\t");
                         String[] pos_and_neg_counts = columns[1].split("@");
 
@@ -175,25 +186,24 @@ public class NB {
                 }
             }
 
-            // calculate all the word probabilities for positive and negative class (with
-            // laplace smoothing)
-            for (Map.Entry<String, Integer> entry : pos_words.entrySet()) {
-                pos_words_probabilities.put(entry.getKey(),
-                        ((double) entry.getValue() + 1) / (pos_words_size + features_size));
-                neg_words_probabilities.put(entry.getKey(),
-                        ((double) neg_words.get(entry.getKey()) + 1) / (neg_words_size + features_size));
+            // calculate all the word probabilities for positive and negative class (with laplace smoothing)
+            for(Map.Entry<String,Integer> entry : pos_words.entrySet()) 
+            {
+                pos_words_probabilities.put(entry.getKey(), ((double) entry.getValue() + 1) / (pos_words_size + features_size));
+                neg_words_probabilities.put(entry.getKey(), ((double) neg_words.get(entry.getKey()) + 1) / (neg_words_size + features_size));
             }
         }
-
-        public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+        
+        public void map(Object key, Text value, Context context) throws IOException, InterruptedException 
+        {
             String line = value.toString();
             String[] columns = line.split(",");
 
-            // if the columns are more than 4, that means the text of the post had commas
-            // inside,
+            // if the columns are more than 4, that means the text of the post had commas inside,  
             // so stitch the last columns together to form the post
-            if (columns.length > 4) {
-                for (int i = 4; i < columns.length; i++)
+            if(columns.length > 4)
+            {
+                for(int i=4; i<columns.length; i++)
                     columns[3] += columns[i];
             }
 
@@ -202,51 +212,48 @@ public class NB {
             String tweet_text = columns[3];
 
             // clean the text of the tweet from links...
-            tweet_text = tweet_text.replaceAll(
-                    "(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})",
-                    "")
-                    .replaceAll("(#|@|&).*?\\w+", "") // mentions, hashtags, special characters...
-                    .replaceAll("\\d+", "") // numbers...
-                    .replaceAll("[^a-zA-Z ]", " ") // punctuation...
-                    .toLowerCase() // turn every character left to lowercase...
-                    .trim() // trim the spaces before & after the whole string...
-                    .replaceAll("\\s+", " "); // and get rid of double spaces
+            tweet_text = tweet_text.replaceAll("(?i)(https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|www\\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\\.[^\\s]{2,}|https?:\\/\\/(?:www\\.|(?!www))[a-zA-Z0-9]+\\.[^\\s]{2,}|www\\.[a-zA-Z0-9]+\\.[^\\s]{2,})", "")
+                                .replaceAll("(#|@|&).*?\\w+", "")   // mentions, hashtags, special characters...
+                                .replaceAll("\\d+", "")             // numbers...
+                                .replaceAll("[^a-zA-Z ]", " ")      // punctuation...
+                                .toLowerCase()                      // turn every character left to lowercase...
+                                .trim()                             // trim the spaces before & after the whole string...
+                                .replaceAll("\\s+", " ");           // and get rid of double spaces
 
-            // initialize the product of positive and negative probabilities with 1
-            Double pos_probability = 1.0;
-            Double neg_probability = 1.0;
+            // Use log probabilities to avoid underflow and improve performance
+            Double log_pos_probability = Math.log(pos_class_probability);
+            Double log_neg_probability = Math.log(neg_class_probability);
 
-            // calculate the product of the probabilities of the words (+ the class
-            // probability) for each class
-            if (tweet_text != null && !tweet_text.trim().isEmpty()) {
+            // calculate the sum of log probabilities of the words for each class
+            if(tweet_text != null && !tweet_text.trim().isEmpty())
+            {
                 String[] tweet_words = tweet_text.split(" ");
 
-                for (String word : tweet_words) {
-                    for (Map.Entry<String, Double> entry : pos_words_probabilities.entrySet()) {
-                        if (word.equals(entry.getKey())) {
-                            pos_probability *= pos_words_probabilities.get(word);
-                            neg_probability *= neg_words_probabilities.get(word);
-                        }
+                // FIXED: Direct HashMap lookup instead of nested loop - O(n) instead of O(n*m)
+                for(String word : tweet_words)
+                {
+                    // Only lookup words that exist in our vocabulary
+                    if(pos_words_probabilities.containsKey(word))
+                    {
+                        log_pos_probability += Math.log(pos_words_probabilities.get(word));
+                        log_neg_probability += Math.log(neg_words_probabilities.get(word));
                     }
                 }
             }
 
-            // multiply the product of positive and negative probability with the class
-            // probability of each sentiment
-            pos_probability *= pos_class_probability;
-            neg_probability *= neg_class_probability;
-
-            // compare and set the max value of the two class probabilities as the result of
-            // the guessed sentiment for every tweet
-            if (Double.compare(pos_probability, neg_probability) > 0) {
-                if (tweet_sentiment.equals("1"))
+            // compare and set the max value of the two class probabilities as the result of the guessed sentiment for every tweet
+            if(Double.compare(log_pos_probability, log_neg_probability) > 0)
+            {
+                if(tweet_sentiment.equals("1"))
                     context.getCounter(Global_Counters.TRUE_POSITIVE).increment(1);
                 else
                     context.getCounter(Global_Counters.FALSE_POSITIVE).increment(1);
 
                 context.write(new Text(tweet_id + "@" + tweet_text), new Text("POSITIVE"));
-            } else {
-                if (tweet_sentiment.equals("0"))
+            }
+            else
+            {
+                if(tweet_sentiment.equals("0"))
                     context.getCounter(Global_Counters.TRUE_NEGATIVE).increment(1);
                 else
                     context.getCounter(Global_Counters.FALSE_NEGATIVE).increment(1);
@@ -256,7 +263,10 @@ public class NB {
         }
     }
 
-    public static void main(String[] args) throws Exception {
+
+
+    public static void main(String[] args) throws Exception 
+    {
         // paths to directories were input, inbetween and final job outputs are stored
         Path input_dir = new Path(args[0]);
         Path training_dir = new Path("training");
@@ -266,9 +276,9 @@ public class NB {
         Configuration conf = new Configuration();
 
         FileSystem fs = FileSystem.get(conf);
-        if (fs.exists(training_dir))
+        if(fs.exists(training_dir))
             fs.delete(training_dir, true);
-        if (fs.exists(output_dir))
+        if(fs.exists(output_dir))
             fs.delete(output_dir, true);
 
         long start_time = System.nanoTime();
@@ -276,8 +286,8 @@ public class NB {
         Job training_job = Job.getInstance(conf, "Training");
         training_job.setJarByClass(NB.class);
         training_job.setMapperClass(Map_Training.class);
-        training_job.setReducerClass(Reduce_Training.class);
-        training_job.setNumReduceTasks(3);
+        training_job.setReducerClass(Reduce_Training.class); 
+        training_job.setNumReduceTasks(3);   
         training_job.setMapOutputKeyClass(Text.class);
         training_job.setMapOutputValueClass(Text.class);
         training_job.setOutputKeyClass(Text.class);
@@ -287,26 +297,19 @@ public class NB {
         TextOutputFormat.setOutputPath(training_job, training_dir);
         training_job.waitForCompletion(true);
 
-        int tweets_size = Math
-                .toIntExact(training_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
+        int tweets_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.TWEETS_SIZE).getValue());
         conf.set("tweets_size", String.valueOf(tweets_size));
-        int pos_tweets_size = Math
-                .toIntExact(training_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
+        int pos_tweets_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.POS_TWEETS_SIZE).getValue());
         conf.set("pos_tweets_size", String.valueOf(pos_tweets_size));
-        int neg_tweets_size = Math
-                .toIntExact(training_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
+        int neg_tweets_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.NEG_TWEETS_SIZE).getValue());
         conf.set("neg_tweets_size", String.valueOf(neg_tweets_size));
-        int pos_words_size = Math
-                .toIntExact(training_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
+        int pos_words_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.POS_WORDS_SIZE).getValue());
         conf.set("pos_words_size", String.valueOf(pos_words_size));
-        int neg_words_size = Math
-                .toIntExact(training_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
+        int neg_words_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.NEG_WORDS_SIZE).getValue());
         conf.set("neg_words_size", String.valueOf(neg_words_size));
-        int features_size = Math
-                .toIntExact(training_job.getCounters().findCounter(Global_Counters.FEATURES_SIZE).getValue());
+        int features_size = Math.toIntExact(training_job.getCounters().findCounter(Global_Counters.FEATURES_SIZE).getValue());
         conf.set("features_size", String.valueOf(features_size));
 
-        
         Job testing_job = Job.getInstance(conf, "Testing");
         testing_job.setJarByClass(NB.class);
         testing_job.setMapperClass(Map_Testing.class);  

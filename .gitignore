@@ -1,0 +1,232 @@
+# ===========================
+# Big Data Project .gitignore
+# ===========================
+
+# ============= IDE =============
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Eclipse
+.project
+.classpath
+.settings/
+
+# ============= Python =============
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+*.virtualenv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+
+# ============= Java/Scala =============
+# Compiled files
+*.class
+*.log
+
+# Package files (keep only necessary JARs)
+# *.jar
+# *.war
+# *.ear
+
+# Scala/SBT
+target/
+project/target/
+project/project/
+.bsp/
+.scala_build/
+*.sc
+
+# Maven
+.mvn/
+mvn.cmd
+mvn.bat
+
+# ============= Hadoop =============
+# Hadoop output directories
+hadoop_*/
+*_output/
+*_model/
+
+# Keep specific model/output directories if needed
+!Hadoop/hadoop_nb_model/
+!Hadoop/hadoop_nb_output/
+
+# Metastore
+metastore_db/
+derby.log
+
+# ============= Spark =============
+# Spark logs
+spark-warehouse/
+*.log
+*.out
+
+# Checkpoints
+*checkpoint*/
+checkpoints/
+
+# Spark event logs
+spark-events/
+
+# ============= Kafka =============
+# Kafka logs
+kafka-logs/
+zookeeper/
+
+# ============= MongoDB =============
+# MongoDB data
+data/db/
+*.lock
+
+# ============= Data Files =============
+# Large data files (uncomment if you don't want to track them)
+# data/raws/*.csv
+# data/preprocessed/*.csv
+
+# Temporary data
+data/temp/
+data/tmp/
+
+# Downloaded packages
+downloads/*.tar.gz
+downloads/*.tgz
+downloads/*.zip
+
+# ============= Logs =============
+# Log files
+*.log
+logs/
+spark-*.log
+hadoop-*.log
+kafka-*.log
+
+# ============= OS =============
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============= Temporary Files =============
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.~*
+
+# ============= Credentials =============
+# Security & credentials
+*.key
+*.pem
+*.p12
+secrets/
+.env
+credentials.json
+
+# ============= Backups =============
+*.bak
+*.backup
+*.old
+
+# ============= Compressed Files =============
+# Keep downloads but ignore temp compressed files
+# *.tar.gz
+# *.tgz
+# *.zip
+# *.rar
+# *.7z
+
+# ============= Documentation =============
+# Keep documentation but ignore temporary files
+*.pdf~
+*.docx~
+
+# ============= Project Specific =============
+# API virtual env
+api/venv/
+
+# Kafka producer venv
+kafka_producer/venv/
+
+# Commands and notes (if sensitive)
+# commands.txt
+
+# ============= Test Files =============
+# Test outputs
+test-output/
+test-results/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# ============= Build Artifacts =============
+# Keep necessary JARs for Hadoop
+!Hadoop/modified_nb.jar
+!Hadoop/nb.jar
+
+# Compiled classes (keep if needed for reference)
+# Hadoop/classes/
+
+# ============= Misc =============
+# Thumbs and other
+.cache/
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
