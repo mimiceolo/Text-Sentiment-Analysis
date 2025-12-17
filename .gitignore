@@ -230,3 +230,6 @@ coverage.xml
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+data/raws/*.csv
+data/preprocessed/*.csv
