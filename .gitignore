@@ -231,5 +231,9 @@ coverage.xml
 .dmypy.json
 dmypy.json
 
+# ============= Data CSV Files (Large datasets) =============
+# Ignore all CSV files in data directory
+data/**/*.csv
 data/raws/*.csv
 data/preprocessed/*.csv
+data/*.csv
