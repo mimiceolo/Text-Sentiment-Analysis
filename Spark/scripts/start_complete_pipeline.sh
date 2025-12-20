@@ -82,7 +82,7 @@ echo -e "${GREEN}✓${NC} Kafka topics ready"
 
 # 7. Check training data
 echo -e "\n${YELLOW}[7/8]${NC} Checking training data..."
-if [ ! -f training_processed.csv ]; then
+if [ ! -f ../../data/preprocessed/training_processed.csv ]; then
     echo -e "${RED}✗${NC} training_processed.csv not found!"
     echo "Run: python3 preprocess_sentiment_data.py"
     exit 1

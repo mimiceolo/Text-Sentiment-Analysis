@@ -56,6 +56,11 @@
             box-shadow: 0 7px 20px rgba(0,0,0,0.3);
         }
         
+        button.active {
+            background: #667eea;
+            color: white;
+        }
+        
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -193,6 +198,9 @@
         <div class="controls">
             <button onclick="loadDashboard()">🔄 Refresh Data</button>
             <button onclick="toggleAutoRefresh()">⏱️ Auto-Refresh: <span id="autoRefreshStatus">ON</span></button>
+            <button onclick="switchSource('all')" id="btnAll" class="active">📊 All Sources</button>
+            <button onclick="switchSource('spark')" id="btnSpark">⚡ Spark Only</button>
+            <button onclick="switchSource('hadoop')" id="btnHadoop">🐘 Hadoop Only</button>
         </div>
         
         <div id="error" class="error" style="display: none;"></div>
@@ -212,6 +220,13 @@
         </div>
         
         <div class="chart-container">
+            <h2 class="chart-title">📦 Recent Batch Metrics</h2>
+            <div id="batchMetrics" class="predictions-list">
+                <div class="loading">Loading batch metrics...</div>
+            </div>
+        </div>
+        
+        <div class="chart-container">
             <h2 class="chart-title">🔍 Recent Predictions</h2>
             <div id="recentPredictions" class="predictions-list">
                 <div class="loading">Loading predictions...</div>
@@ -224,6 +239,19 @@
         let autoRefresh = true;
         let refreshInterval = null;
         let charts = {};
+        let currentSource = 'all';  // 'all', 'spark', 'hadoop'
+        
+        function switchSource(source) {
+            currentSource = source;
+            
+            // Update button states
+            document.querySelectorAll('.controls button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById('btn' + source.charAt(0).toUpperCase() + source.slice(1)).classList.add('active');
+            
+            loadDashboard();
+        }
         
         function showError(message) {
             const errorDiv = document.getElementById('error');
@@ -247,6 +275,7 @@
                     loadStats(),
                     loadModelComparison(),
                     loadSentimentTrend(),
+                    loadBatchMetrics(),
                     loadRecentPredictions()
                 ]);
                 
@@ -297,6 +326,16 @@
                     return;
                 }
                 
+                // Filter by current source
+                let filteredModels = data.models;
+                if (currentSource !== 'all') {
+                    filteredModels = data.models.filter(m => m.source === currentSource);
+                }
+                
+                if (filteredModels.length === 0) {
+                    return;
+                }
+                
                 const ctx = document.getElementById('modelComparisonChart').getContext('2d');
                 
                 // Destroy existing chart if it exists
@@ -304,21 +343,24 @@
                     charts.modelComparison.destroy();
                 }
                 
+                // Add source label to model names
+                const labels = filteredModels.map(m => `${m.model} (${m.source})`);
+                
                 charts.modelComparison = new Chart(ctx, {
                     type: 'bar',
                     data: {
-                        labels: data.models.map(m => m.model),
+                        labels: labels,
                         datasets: [
                             {
                                 label: 'Accuracy (%)',
-                                data: data.models.map(m => (m.avg_accuracy * 100).toFixed(2)),
+                                data: filteredModels.map(m => (m.avg_accuracy * 100).toFixed(2)),
                                 backgroundColor: 'rgba(102, 126, 234, 0.7)',
                                 borderColor: 'rgba(102, 126, 234, 1)',
                                 borderWidth: 1
                             },
                             {
                                 label: 'F1 Score (%)',
-                                data: data.models.map(m => (m.avg_f1_score * 100).toFixed(2)),
+                                data: filteredModels.map(m => (m.avg_f1_score * 100).toFixed(2)),
                                 backgroundColor: 'rgba(118, 75, 162, 0.7)',
                                 borderColor: 'rgba(118, 75, 162, 1)',
                                 borderWidth: 1
@@ -433,6 +475,70 @@
                 });
             } catch (error) {
                 console.error('Error loading sentiment trend:', error);
+            }
+        }
+        
+        async function loadBatchMetrics() {
+            try {
+                const response = await fetch(`${API_BASE}/metrics/batch?limit=20&source=${currentSource}`);
+                const data = await response.json();
+                
+                const container = document.getElementById('batchMetrics');
+                
+                if (!data.metrics || data.metrics.length === 0) {
+                    container.innerHTML = '<div style="padding: 20px; text-align: center;">No batch metrics available yet.</div>';
+                    return;
+                }
+                
+                container.innerHTML = data.metrics.map(m => {
+                    const sourceLabel = m.source === 'hadoop' ? '🐘 Hadoop' : '⚡ Spark';
+                    const sourceBadgeColor = m.source === 'hadoop' ? '#FF6B35' : '#667eea';
+                    
+                    return `
+                        <div class="prediction-item">
+                            <div class="prediction-header">
+                                <span class="model-badge" style="background: ${sourceBadgeColor};">
+                                    ${sourceLabel} - ${m.model || 'Unknown Model'}
+                                </span>
+                                <span class="timestamp">${new Date(m.timestamp).toLocaleString()}</span>
+                            </div>
+                            <div style="margin: 10px 0;">
+                                <strong>Batch ID:</strong> ${m.batch_id || 'N/A'}
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-top: 10px;">
+                                <div>
+                                    <strong>Tweets:</strong> ${(m.tweets_processed || m.total_tweets || 0).toLocaleString()}
+                                </div>
+                                <div>
+                                    <strong>Accuracy:</strong> <span style="color: #667eea; font-weight: bold;">${((m.accuracy || 0) * 100).toFixed(2)}%</span>
+                                </div>
+                                <div>
+                                    <strong>Precision:</strong> ${((m.precision || 0) * 100).toFixed(2)}%
+                                </div>
+                                <div>
+                                    <strong>Recall:</strong> ${((m.recall || 0) * 100).toFixed(2)}%
+                                </div>
+                                <div>
+                                    <strong>F1-Score:</strong> ${((m.f1_score || 0) * 100).toFixed(2)}%
+                                </div>
+                                <div>
+                                    <strong>Time:</strong> ${(m.execution_time_seconds || m.processing_time_ms/1000 || 0).toFixed(1)}s
+                                </div>
+                            </div>
+                            ${m.confusion_matrix ? `
+                            <div style="margin-top: 10px; font-size: 0.9em; color: #666;">
+                                <strong>Confusion Matrix:</strong> 
+                                TP: ${m.confusion_matrix.true_positive}, 
+                                FP: ${m.confusion_matrix.false_positive}, 
+                                TN: ${m.confusion_matrix.true_negative}, 
+                                FN: ${m.confusion_matrix.false_negative}
+                            </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Error loading batch metrics:', error);
             }
         }
         

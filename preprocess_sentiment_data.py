@@ -62,14 +62,14 @@ def preprocess_sentiment_file(input_file, output_file):
 if __name__ == "__main__":
     # Process training data
     preprocess_sentiment_file(
-        '../data/raws/training.1600000.processed.noemoticon.csv',
-        '../data/preprocessed/training_processed.csv'
+        'data/raws/training.1600000.processed.noemoticon.csv',
+        'data/preprocessed/training_processed.csv'
     )
     
     # Process test data
     preprocess_sentiment_file(
-        '../data/testdata.manual.2009.06.14.csv',
-        '../data/preprocessed/test_processed.csv'
+        'data/raws/testdata.manual.2009.06.14.csv',
+        'data/preprocessed/test_processed.csv'
     )
     
     print("=" * 60)

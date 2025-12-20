@@ -57,13 +57,15 @@ def health():
         # Get collection counts
         predictions_count = db.predictions.count_documents({})
         metrics_count = db.batch_metrics.count_documents({})
+        hadoop_predictions_count = db.hadoop_prediction_batches.count_documents({})
         
         return jsonify({
             'status': 'healthy',
             'mongodb': 'connected',
             'collections': {
                 'predictions': predictions_count,
-                'batch_metrics': metrics_count
+                'batch_metrics': metrics_count,
+                'hadoop_prediction_batches': hadoop_predictions_count
             },
             'timestamp': datetime.now().isoformat()
         }), 200
@@ -152,26 +154,53 @@ def get_prediction_stats():
 
 @app.route('/api/metrics/batch', methods=['GET'])
 def get_batch_metrics():
-    """Get batch metrics over time"""
+    """Get batch metrics over time from both Spark and Hadoop"""
     if db is None:
         return jsonify({'error': 'Database not available'}), 500
     
     model = request.args.get('model', None)
     limit = int(request.args.get('limit', 50))
+    source = request.args.get('source', 'all')  # 'all', 'spark', 'hadoop'
     
     query = {}
     if model:
         query['model'] = model
     
     try:
-        metrics = list(db.batch_metrics.find(
-            query,
-            {'_id': 0}
-        ).sort('timestamp', DESCENDING).limit(limit))
+        metrics = []
+        
+        # Get Spark metrics
+        if source in ['all', 'spark']:
+            spark_metrics = list(db.batch_metrics.find(
+                query,
+                {'_id': 0}
+            ).sort('timestamp', DESCENDING).limit(limit))
+            
+            # Add source tag
+            for metric in spark_metrics:
+                metric['source'] = 'spark'
+            
+            metrics.extend(spark_metrics)
+        
+        # Get Hadoop metrics
+        if source in ['all', 'hadoop']:
+            hadoop_metrics = list(db.hadoop_prediction_batches.find(
+                query,
+                {'_id': 0}
+            ).sort('timestamp', DESCENDING).limit(limit))
+            
+            # Add source tag
+            for metric in hadoop_metrics:
+                metric['source'] = 'hadoop'
+            
+            metrics.extend(hadoop_metrics)
+        
+        # Sort combined results by timestamp
+        metrics.sort(key=lambda x: x.get('timestamp', datetime.min), reverse=True)
         
         return jsonify({
             'count': len(metrics),
-            'metrics': metrics
+            'metrics': metrics[:limit]  # Limit after combining
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -246,14 +275,15 @@ def get_sentiment_trend():
 
 @app.route('/api/models/compare', methods=['GET'])
 def compare_models():
-    """Compare performance across models"""
+    """Compare performance across models (Spark and Hadoop)"""
     if db is None:
         return jsonify({'error': 'Database not available'}), 500
     
     hours = int(request.args.get('hours', 24))
     time_threshold = datetime.now() - timedelta(hours=hours)
     
-    pipeline = [
+    # Pipeline for Spark batch_metrics
+    spark_pipeline = [
         {'$match': {'timestamp': {'$gte': time_threshold}}},
         {'$group': {
             '_id': '$model',
@@ -267,6 +297,7 @@ def compare_models():
         }},
         {'$project': {
             'model': '$_id',
+            'source': {'$literal': 'spark'},
             'avg_accuracy': 1,
             'avg_f1_score': 1,
             'avg_precision': 1,
@@ -277,8 +308,38 @@ def compare_models():
         }}
     ]
     
+    # Pipeline for Hadoop hadoop_prediction_batches
+    hadoop_pipeline = [
+        {'$match': {'timestamp': {'$gte': time_threshold}}},
+        {'$group': {
+            '_id': '$model',
+            'avg_accuracy': {'$avg': '$accuracy'},
+            'avg_f1_score': {'$avg': '$f1_score'},
+            'avg_precision': {'$avg': '$precision'},
+            'avg_recall': {'$avg': '$recall'},
+            'total_batches': {'$sum': 1},
+            'total_tweets': {'$sum': '$tweets_processed'},
+            'avg_processing_time': {'$avg': '$execution_time_seconds'}
+        }},
+        {'$project': {
+            'model': '$_id',
+            'source': {'$literal': 'hadoop'},
+            'avg_accuracy': 1,
+            'avg_f1_score': 1,
+            'avg_precision': 1,
+            'avg_recall': 1,
+            'total_batches': 1,
+            'total_tweets': 1,
+            'avg_processing_time_seconds': '$avg_processing_time'
+        }}
+    ]
+    
     try:
-        comparison = list(db.batch_metrics.aggregate(pipeline))
+        spark_comparison = list(db.batch_metrics.aggregate(spark_pipeline))
+        hadoop_comparison = list(db.hadoop_prediction_batches.aggregate(hadoop_pipeline))
+        
+        # Combine results
+        comparison = spark_comparison + hadoop_comparison
         
         return jsonify({
             'time_range_hours': hours,
