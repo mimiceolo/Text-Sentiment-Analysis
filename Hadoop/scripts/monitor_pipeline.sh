@@ -3,6 +3,8 @@
 # Monitor Continuous Kafka-Hadoop Pipeline
 # Shows real-time statistics and status
 
+cd ..
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Colors

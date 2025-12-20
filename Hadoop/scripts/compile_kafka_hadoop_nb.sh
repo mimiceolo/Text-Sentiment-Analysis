@@ -6,6 +6,8 @@ echo "========================================="
 echo "Compiling KafkaHadoopNB.java"
 echo "========================================="
 
+cd ..
+
 # Set HADOOP_CLASSPATH
 export HADOOP_CLASSPATH=$HADOOP_HOME/share/hadoop/common/*:$HADOOP_HOME/share/hadoop/mapreduce/*
 

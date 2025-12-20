@@ -2,7 +2,7 @@
 
 # Scheduled Prediction Runner (Real-time Streaming)
 # Loads pre-trained model and predicts on new streaming data
-
+cd ..
 # Set up Hadoop environment for cron jobs
 if [ -z "$HADOOP_HOME" ]; then
     export HADOOP_HOME=/usr/local/hadoop

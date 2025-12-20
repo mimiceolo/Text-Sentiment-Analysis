@@ -6,6 +6,8 @@ echo "========================================="
 echo "Compiling KafkaToHDFSConsumer.java"
 echo "========================================="
 
+cd ..
+
 # Set classpath
 export HADOOP_CLASSPATH=$HADOOP_HOME/share/hadoop/common/*:$HADOOP_HOME/share/hadoop/hdfs/*
 

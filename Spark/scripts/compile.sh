@@ -1,8 +1,11 @@
 #!/bin/bash
 
-# Spark Scala Project Compilation Script
-# Compiles all Scala files and creates a fat JAR with dependencies
+# Spark Sentiment Analysis - Compilation Script
+# Compiles Scala files and creates fat JAR with dependencies
 cd ..
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 # Colors
 GREEN='\033[0;32m'
@@ -20,45 +23,65 @@ echo ""
 if ! command -v sbt &> /dev/null; then
     echo -e "${RED}✗ SBT not found!${NC}"
     echo ""
-    echo "Install SBT first:"
-    echo "  Ubuntu/Debian:"
-    echo "    echo 'deb https://repo.scala-sbt.org/scalasbt/debian all main' | sudo tee /etc/apt/sources.list.d/sbt.list"
-    echo "    curl -sL 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x2EE0EA64E40A89B84B2DF73499E82A75642AC823' | sudo apt-key add"
-    echo "    sudo apt-get update"
-    echo "    sudo apt-get install sbt"
+    echo "Install SBT:"
+    echo "  sudo apt-get update"
+    echo "  sudo apt-get install sbt"
     echo ""
     exit 1
 fi
 
-echo -e "${GREEN}✓${NC} SBT found: $(sbt --version | head -1)"
+SBT_VERSION=$(sbt --version 2>&1 | grep -i "sbt version" | awk '{print $NF}')
+echo -e "${GREEN}✓${NC} SBT found: version $SBT_VERSION"
 echo ""
 
 # List source files
 echo "Source files:"
-find src/main/scala -name "*.scala" | sed 's|^|  - |'
+if [ -d "src/main/scala" ]; then
+    find src/main/scala -name "*.scala" | sort | sed 's|^|  - |'
+    FILE_COUNT=$(find src/main/scala -name "*.scala" | wc -l)
+    echo "  Total: $FILE_COUNT files"
+else
+    echo -e "${RED}  ✗ No src/main/scala directory found${NC}"
+    exit 1
+fi
 echo ""
 
 # Clean previous builds
-echo -e "${YELLOW}Cleaning previous builds...${NC}"
+echo -e "${YELLOW}[1/3] Cleaning previous builds...${NC}"
 sbt clean
 
+if [ $? -ne 0 ]; then
+    echo ""
+    echo -e "${RED}✗ Clean failed!${NC}"
+    exit 1
+fi
+
 echo ""
-echo -e "${YELLOW}Compiling Scala sources...${NC}"
+echo -e "${YELLOW}[2/3] Compiling Scala sources...${NC}"
 sbt compile
 
 if [ $? -ne 0 ]; then
     echo ""
     echo -e "${RED}✗ Compilation failed!${NC}"
+    echo ""
+    echo "Common issues:"
+    echo "  - Check Scala syntax errors"
+    echo "  - Verify all imports are correct"
+    echo "  - Ensure dependencies in build.sbt are accessible"
     exit 1
 fi
 
 echo ""
-echo -e "${YELLOW}Creating fat JAR with dependencies...${NC}"
+echo -e "${YELLOW}[3/3] Creating fat JAR with dependencies...${NC}"
 sbt assembly
 
 if [ $? -ne 0 ]; then
     echo ""
     echo -e "${RED}✗ Assembly failed!${NC}"
+    echo ""
+    echo "Common issues:"
+    echo "  - Dependency conflicts (check build.sbt)"
+    echo "  - Out of memory (try: export SBT_OPTS='-Xmx2G')"
     exit 1
 fi
 
@@ -68,48 +91,64 @@ echo -e "${GREEN}✓ Build Complete!${NC}"
 echo "========================================="
 
 # Find the generated JAR
-JAR_FILE=$(find target -name "*-assembly.jar" | head -1)
+JAR_FILE=$(find target -name "*-assembly.jar" 2>/dev/null | head -1)
 
-if [ -n "$JAR_FILE" ]; then
+if [ -n "$JAR_FILE" ] && [ -f "$JAR_FILE" ]; then
     JAR_SIZE=$(du -h "$JAR_FILE" | cut -f1)
+    echo ""
     echo -e "Output JAR: ${GREEN}$JAR_FILE${NC}"
-    echo "Size: $JAR_SIZE"
+    echo "Size:       $JAR_SIZE"
     echo ""
     
-    # Show available main classes
-    echo "Available main classes:"
-    echo "  1. NB                        - Train Naive Bayes model (batch)"
-    echo "  2. SVM                       - Train SVM model (batch)"
-    echo "  3. TrainModels               - Train all models"
-    echo "  4. NB_Streaming              - Naive Bayes real-time streaming"
-    echo "  5. NB_Streaming_MongoDB      - NB streaming with MongoDB output"
-    echo "  6. SVM_Streaming             - SVM real-time streaming"
-    echo "  7. SVM_Streaming_MongoDB     - SVM streaming with MongoDB output"
+    echo "Available Classes:"
+    echo "  1. TrainModels            - Train NB and SVM models (batch)"
+    echo "  2. NB_Streaming_MongoDB   - Naive Bayes streaming → MongoDB"
+    echo "  3. SVM_Streaming_MongoDB  - SVM streaming → MongoDB"
     echo ""
     
-    echo "Example usage:"
+    echo "========================================="
+    echo "Usage Examples"
+    echo "========================================="
     echo ""
-    echo "# Train models (batch):"
-    echo "spark-submit --class NB \\"
+    
+    echo -e "${BLUE}1. Train Models (NB + SVM):${NC}"
+    echo "spark-submit \\"
+    echo "  --class TrainModels \\"
     echo "  --master local[*] \\"
     echo "  $JAR_FILE \\"
-    echo "  hdfs://localhost:9000/user/hadoop/training_data \\"
-    echo "  hdfs://localhost:9000/user/hadoop/test_data \\"
-    echo "  hdfs://localhost:9000/user/hadoop/spark_models/nb_model"
+    echo "  hdfs://localhost:9000/user/hadoop/kafka_data/tweets-training \\"
+    echo "  hdfs://localhost:9000/user/hadoop/kafka_data/tweets-testing \\"
+    echo "  hdfs://localhost:9000/user/hadoop/spark_models"
     echo ""
-    echo "# Real-time streaming with MongoDB:"
-    echo "spark-submit --class NB_Streaming_MongoDB \\"
+    
+    echo -e "${BLUE}2. NB Real-time Streaming (MongoDB):${NC}"
+    echo "spark-submit \\"
+    echo "  --class NB_Streaming_MongoDB \\"
     echo "  --master local[*] \\"
-    echo "  --packages org.apache.spark:spark-streaming-kafka-0-10_2.12:3.4.1 \\"
     echo "  $JAR_FILE \\"
     echo "  localhost:9092 \\"
     echo "  tweets-testing \\"
     echo "  sentiment_analysis \\"
     echo "  hdfs://localhost:9000/user/hadoop/spark_models/nb_model"
     echo ""
+    
+    echo -e "${BLUE}3. SVM Real-time Streaming (MongoDB):${NC}"
+    echo "spark-submit \\"
+    echo "  --class SVM_Streaming_MongoDB \\"
+    echo "  --master local[*] \\"
+    echo "  $JAR_FILE \\"
+    echo "  localhost:9092 \\"
+    echo "  tweets-testing \\"
+    echo "  sentiment_analysis \\"
+    echo "  hdfs://localhost:9000/user/hadoop/spark_models/svm_model"
+    echo ""
+    
+    echo "========================================="
+    echo -e "${GREEN}Ready to submit Spark jobs!${NC}"
+    echo "========================================="
 else
-    echo -e "${RED}✗ JAR file not found in target directory${NC}"
+    echo ""
+    echo -e "${RED}✗ JAR file not found!${NC}"
+    echo "Expected location: target/scala-2.12/*-assembly.jar"
     exit 1
 fi
-
-echo "========================================="
