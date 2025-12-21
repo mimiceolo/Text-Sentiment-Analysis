@@ -2,6 +2,65 @@
 
 Các file cấu hình Kubernetes để deploy dự án Text Sentiment Analysis lên K8s cluster.
 
+## 🎯 Quick Start (Từ GitHub)
+
+### Prerequisites
+- Kubernetes cluster (Minikube, Docker Desktop, hoặc cloud provider)
+- kubectl CLI đã cài đặt
+- Ít nhất 12GB RAM cho Minikube
+
+### 1. Clone Repository
+```bash
+git clone https://github.com/mimiceolo/Text-Sentiment-Analysis.git
+cd Text-Sentiment-Analysis
+git checkout phase2
+```
+
+### 2. Start Minikube (nếu dùng Minikube)
+```bash
+minikube start --memory=12288 --cpus=4 --disk-size=50g
+```
+
+### 3. Copy Sentiment API code vào Minikube
+```bash
+# Tạo thư mục trong Minikube
+minikube ssh "sudo mkdir -p /hosthome/api"
+
+# Copy file Python
+minikube cp api/sentiment_api.py /hosthome/api/sentiment_api.py
+```
+
+### 4. Deploy toàn bộ stack
+```bash
+# Apply tất cả configs
+kubectl apply -f k8s/
+
+# Nếu có lỗi namespace, chạy lại lần nữa
+kubectl apply -f k8s/
+```
+
+### 5. Kiểm tra deployment
+```bash
+# Xem trạng thái pods
+kubectl get pods -n sentiment-analysis
+
+# Xem services
+kubectl get svc -n sentiment-analysis
+```
+
+### 6. Truy cập Sentiment API
+```bash
+# Minikube
+minikube service sentiment-api -n sentiment-analysis
+
+# Hoặc port-forward
+kubectl port-forward -n sentiment-analysis svc/sentiment-api 5000:5000
+```
+
+Sau đó mở browser: `http://localhost:5000`
+
+---
+
 ## 📋 Tổng quan kiến trúc
 
 Dự án bao gồm các thành phần sau:
@@ -238,6 +297,39 @@ kubectl describe pod <pod-name> -n sentiment-analysis
 kubectl logs <pod-name> -n sentiment-analysis
 ```
 
+### ImagePullBackOff errors
+Nếu pods bị lỗi pull image:
+```bash
+# Xóa pod để retry
+kubectl delete pod <pod-name> -n sentiment-analysis
+```
+
+### Memory issues (Pods Pending)
+Nếu thấy `Insufficient memory`:
+```bash
+# Tăng RAM cho Minikube
+minikube stop
+minikube delete
+minikube start --memory=16384 --cpus=6
+```
+
+### Sentiment API không tìm thấy file
+```bash
+# Kiểm tra file đã copy chưa
+minikube ssh "ls -la /hosthome/api/"
+
+# Copy lại nếu cần
+minikube cp api/sentiment_api.py /hosthome/api/sentiment_api.py
+```
+
+### Kafka CrashLoopBackOff
+```bash
+# Restart Kafka pod
+kubectl delete pod -n sentiment-analysis -l app=kafka
+
+# Đợi 30s để pod khởi động lại
+```
+
 ### Storage issues
 
 ```bash
@@ -247,6 +339,21 @@ kubectl get pvc -n sentiment-analysis
 # Describe PVC để xem lỗi
 kubectl describe pvc <pvc-name> -n sentiment-analysis
 ```
+
+### Xóa toàn bộ deployment
+```bash
+kubectl delete namespace sentiment-analysis
+
+# Hoặc dùng script
+bash k8s/undeploy.sh
+```
+
+## 📚 Tài liệu tham khảo
+
+- [OVERVIEW.md](OVERVIEW.md) - Chi tiết kiến trúc hệ thống
+- [SETUP-CLUSTER.md](SETUP-CLUSTER.md) - Hướng dẫn setup cluster chi tiết
+- [Kubernetes Docs](https://kubernetes.io/docs/)
+- [Apache Spark on K8s](https://spark.apache.org/docs/latest/running-on-kubernetes.html)
 
 ### Network issues
 
