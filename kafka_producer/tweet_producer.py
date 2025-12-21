@@ -254,68 +254,6 @@ class TweetProducerEnhanced:
             elapsed_time = time.time() - start_time
             self._log_final_stats(elapsed_time)
     
-    def stream_realtime_simulation(self, csv_file, rate=10):
-        """
-        Simulate real-time tweet stream with realistic delays
-        """
-        logger.info(f"Starting real-time simulation at {rate} tweets/sec")
-        logger.info("=" * 60)
-        
-        start_time = time.time()
-        
-        try:
-            with open(csv_file, 'r', encoding='utf-8', errors='replace') as f:
-                reader = csv.reader(f)
-                
-                for row in reader:
-                    self.stats['total_processed'] += 1
-                    
-                    # Parse and preprocess
-                    result, skip_reason = self.parse_csv_row(row)
-                    
-                    if result is None:
-                        if skip_reason == "neutral":
-                            self.stats['skipped_neutral'] += 1
-                        else:
-                            self.stats['skipped_invalid'] += 1
-                        continue
-                    
-                    tweet_data = result
-                    
-                    # Track sentiment
-                    if tweet_data['Sentiment'] == '0':
-                        self.stats['negative_count'] += 1
-                    else:
-                        self.stats['positive_count'] += 1
-                    
-                    try:
-                        # Send to raw topic
-                        self.producer.send(
-                            'tweets-raw',
-                            key=tweet_data['ItemID'],
-                            value=tweet_data
-                        )
-                        
-                        self.stats['sent_count'] += 1
-                        
-                        if self.stats['sent_count'] % 100 == 0:
-                            self._log_progress()
-                        
-                        # Random delay to simulate real tweets
-                        delay = random.expovariate(rate)
-                        time.sleep(delay)
-                        
-                    except KafkaError as e:
-                        logger.error(f"Kafka error: {e}")
-                        self.stats['error_count'] += 1
-                        continue
-                        
-        except KeyboardInterrupt:
-            logger.info("\nInterrupted by user")
-        finally:
-            self.producer.flush()
-            elapsed_time = time.time() - start_time
-            self._log_final_stats(elapsed_time)
     
     def _log_progress(self):
         """Log current progress"""
@@ -366,9 +304,6 @@ Examples:
   # Stream with preprocessing (fast mode)
   python3 tweet_producer.py --csv-file training.1600000.processed.noemoticon.csv --rate 100
 
-  # Real-time simulation
-  python3 tweet_producer.py --csv-file training.1600000.processed.noemoticon.csv --rate 10 --realtime
-
   # Custom train/test split
   python3 tweet_producer.py --csv-file training.1600000.processed.noemoticon.csv --train-ratio 0.75
         """
@@ -396,11 +331,6 @@ Examples:
         help='Training data ratio 0.0-1.0 (default: 0.8)'
     )
     parser.add_argument(
-        '--realtime',
-        action='store_true',
-        help='Simulate real-time streaming with random delays'
-    )
-    parser.add_argument(
         '--verbose',
         action='store_true',
         help='Enable verbose logging'
@@ -426,7 +356,6 @@ Examples:
     logger.info(f"Kafka servers:    {args.bootstrap_servers}")
     logger.info(f"Rate:             {args.rate} msgs/sec")
     logger.info(f"Train ratio:      {args.train_ratio}")
-    logger.info(f"Mode:             {'Real-time simulation' if args.realtime else 'Fast streaming'}")
     logger.info("=" * 60)
     logger.info("Preprocessing: Convert sentiment labels (0→0, 4→1, skip 2)")
     logger.info("=" * 60 + "\n")
@@ -435,10 +364,7 @@ Examples:
     producer = TweetProducerEnhanced(bootstrap_servers=args.bootstrap_servers)
     
     try:
-        if args.realtime:
-            producer.stream_realtime_simulation(args.csv_file, args.rate)
-        else:
-            producer.stream_from_csv(args.csv_file, args.rate, args.train_ratio)
+        producer.stream_from_csv(args.csv_file, args.rate, args.train_ratio)
     except KeyboardInterrupt:
         logger.info("\nInterrupted by user")
     except Exception as e:
