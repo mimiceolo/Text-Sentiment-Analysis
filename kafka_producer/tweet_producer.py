@@ -202,6 +202,10 @@ class TweetProducerEnhanced:
                     key = tweet_data['ItemID']
                     
                     try:
+                        # Simulate Twitter API call delay (100-200 ms)
+                        api_delay = random.uniform(0.1, 0.2)  # 100-200 ms in seconds
+                        time.sleep(api_delay)
+                        
                         # Send to raw topic
                         future_raw = self.producer.send(
                             'tweets-raw',
@@ -226,7 +230,7 @@ class TweetProducerEnhanced:
                         if self.stats['sent_count'] % 1000 == 0:
                             self._log_progress()
                         
-                        # Control rate
+                        # Control rate (additional delay if needed)
                         time.sleep(1.0 / rate)
                         
                     except KafkaError as e:
