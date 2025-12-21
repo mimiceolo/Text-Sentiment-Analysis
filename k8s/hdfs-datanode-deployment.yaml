@@ -1,0 +1,69 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hdfs-datanode-pvc
+  namespace: sentiment-analysis
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hdfs-datanode
+  namespace: sentiment-analysis
+  labels:
+    app: hdfs-datanode
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hdfs-datanode
+  template:
+    metadata:
+      labels:
+        app: hdfs-datanode
+    spec:
+      containers:
+      - name: datanode
+        image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+        ports:
+        - containerPort: 9864
+          name: web
+        env:
+        - name: CORE_CONF_fs_defaultFS
+          value: "hdfs://hdfs-namenode:9000"
+        volumeMounts:
+        - name: datanode-data
+          mountPath: /hadoop/dfs/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+      volumes:
+      - name: datanode-data
+        persistentVolumeClaim:
+          claimName: hdfs-datanode-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hdfs-datanode
+  namespace: sentiment-analysis
+  labels:
+    app: hdfs-datanode
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9864
+    targetPort: 9864
+    protocol: TCP
+    name: web
+  selector:
+    app: hdfs-datanode

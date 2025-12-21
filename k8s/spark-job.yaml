@@ -1,0 +1,73 @@
+---
+# Spark Job for Sentiment Analysis (CronJob for scheduled runs)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: spark-sentiment-job
+  namespace: sentiment-analysis
+  labels:
+    app: spark-sentiment-job
+spec:
+  # Run every hour
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: spark-submit
+            image: apache/spark:3.4.1
+            command: ["/bin/bash", "-c"]
+            args:
+            - |
+              /opt/bitnami/spark/bin/spark-submit \
+                --master spark://spark-master:7077 \
+                --deploy-mode client \
+                --class SentimentAnalysis \
+                --conf spark.executor.memory=2g \
+                --conf spark.executor.cores=2 \
+                --conf spark.driver.memory=1g \
+                /app/sentiment-analysis.jar
+            volumeMounts:
+            - name: spark-app
+              mountPath: /app
+            resources:
+              requests:
+                memory: "2Gi"
+                cpu: "1000m"
+              limits:
+                memory: "4Gi"
+                cpu: "2000m"
+          volumes:
+          - name: spark-app
+            emptyDir: {}
+---
+# Manual Spark Job (Job - run once)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-sentiment-manual
+  namespace: sentiment-analysis
+  labels:
+    app: spark-sentiment-manual
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: spark-submit
+        image: apache/spark:3.4.1
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          echo "Spark job placeholder - configure with your Spark application"
+          sleep 10
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+  backoffLimit: 3

@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentiment-api-config
+  namespace: sentiment-analysis
+data:
+  MONGO_URI: "mongodb://mongodb:27017/sentiment_analysis"
+  FLASK_ENV: "production"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentiment-api
+  namespace: sentiment-analysis
+  labels:
+    app: sentiment-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sentiment-api
+  template:
+    metadata:
+      labels:
+        app: sentiment-api
+    spec:
+      containers:
+      - name: sentiment-api
+        image: python:3.12-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          pip install --no-cache-dir flask flask-cors pymongo &&
+          cd /app &&
+          python3 sentiment_api.py
+        ports:
+        - containerPort: 5000
+          name: http
+        envFrom:
+        - configMapRef:
+            name: sentiment-api-config
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: app-code
+        hostPath:
+          path: /hosthome/api
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentiment-api
+  namespace: sentiment-analysis
+  labels:
+    app: sentiment-api
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: http
+  selector:
+    app: sentiment-api
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentiment-api-scripts
+  namespace: sentiment-analysis
+data:
+  # Add your sentiment_api.py script here as needed

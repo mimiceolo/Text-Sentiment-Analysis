@@ -1,0 +1,45 @@
+---
+# Hadoop MapReduce Job (CronJob for scheduled runs)
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: hadoop-mapreduce-job
+  namespace: sentiment-analysis
+  labels:
+    app: hadoop-mapreduce-job
+spec:
+  # Run every 6 hours
+  schedule: "0 */6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: hadoop-mapreduce
+            image: bde2020/hadoop-base:2.0.0-hadoop3.2.1-java8
+            command: ["/bin/bash", "-c"]
+            args:
+            - |
+              hadoop jar /app/sentiment-analysis.jar \
+                NaiveBayes \
+                /input/training \
+                /output/model \
+                /input/testing \
+                /output/predictions
+            env:
+            - name: CORE_CONF_fs_defaultFS
+              value: "hdfs://hdfs-namenode:9000"
+            volumeMounts:
+            - name: hadoop-app
+              mountPath: /app
+            resources:
+              requests:
+                memory: "2Gi"
+                cpu: "1000m"
+              limits:
+                memory: "4Gi"
+                cpu: "2000m"
+          volumes:
+          - name: hadoop-app
+            emptyDir: {}

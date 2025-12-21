@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-producer-config
+  namespace: sentiment-analysis
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_TOPIC_RAW: "tweets-raw"
+  KAFKA_TOPIC_TRAINING: "tweets-training"
+  KAFKA_TOPIC_TESTING: "tweets-testing"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-producer
+  namespace: sentiment-analysis
+  labels:
+    app: kafka-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-producer
+  template:
+    metadata:
+      labels:
+        app: kafka-producer
+    spec:
+      containers:
+      - name: kafka-producer
+        image: python:3.12-slim
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          pip install --no-cache-dir kafka-python &&
+          sleep infinity
+        envFrom:
+        - configMapRef:
+            name: kafka-producer-config
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: app-code
+        configMap:
+          name: kafka-producer-scripts
+      - name: data
+        emptyDir: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-producer-scripts
+  namespace: sentiment-analysis
+data:
+  # Add your tweet_producer.py script here as needed
