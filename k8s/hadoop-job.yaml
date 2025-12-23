@@ -8,7 +8,8 @@ metadata:
   labels:
     app: hadoop-mapreduce-job
 spec:
-  # Run every 6 hours
+  # Run every 6 hours (suspended until JAR is uploaded)
+  suspend: true
   schedule: "0 */6 * * *"
   jobTemplate:
     spec:

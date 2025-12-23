@@ -8,7 +8,8 @@ metadata:
   labels:
     app: spark-sentiment-job
 spec:
-  # Run every hour
+  # Run every hour (suspended until JAR is uploaded)
+  suspend: true
   schedule: "0 * * * *"
   jobTemplate:
     spec:
@@ -21,7 +22,7 @@ spec:
             command: ["/bin/bash", "-c"]
             args:
             - |
-              /opt/bitnami/spark/bin/spark-submit \
+              /opt/spark/bin/spark-submit \
                 --master spark://spark-master:7077 \
                 --deploy-mode client \
                 --class SentimentAnalysis \
