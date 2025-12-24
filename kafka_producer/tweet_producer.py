@@ -47,7 +47,6 @@ class TweetProducerEnhanced:
             'skipped_invalid': 0,
             'positive_count': 0,
             'negative_count': 0,
-            'train_count': 0,
             'test_count': 0,
             'error_count': 0
         }
@@ -58,8 +57,12 @@ class TweetProducerEnhanced:
         """
         Preprocess sentiment label matching preprocess_sentiment_data.py
         
+        Supports both formats:
+        - Sentiment140: "0" (negative), "4" (positive), "2" (neutral - skip)
+        - TweetEval/Simple: "0" (negative), "1" (positive)
+        
         Args:
-            sentiment_str: Original sentiment string ("0", "2", "4", etc.)
+            sentiment_str: Original sentiment string ("0", "1", "2", "4", etc.)
         
         Returns:
             tuple: (processed_sentiment, should_skip)
@@ -71,8 +74,11 @@ class TweetProducerEnhanced:
         if sentiment == '0':
             # Negative stays 0
             return '0', False
+        elif sentiment == '1':
+            # Positive (already in correct format)
+            return '1', False
         elif sentiment == '4':
-            # Positive becomes 1
+            # Positive (Sentiment140 format) becomes 1
             return '1', False
         elif sentiment == '2':
             # Skip neutral
@@ -94,19 +100,32 @@ class TweetProducerEnhanced:
     
     def parse_csv_row(self, row):
         """
-        Parse CSV row from Sentiment140 format
+        Parse CSV row from different formats:
         
-        Original format: Sentiment, ID, Date, Query, User, Text
-        Returns: (ItemID, Sentiment, Text) or None if should skip
+        1. Sentiment140 format: Sentiment, ID, Date, Query, User, Text (6 columns)
+        2. Simple format: ItemID, Sentiment, SentimentSource, SentimentText (4 columns)
+        
+        Returns: dict with ItemID, Sentiment, SentimentSource, Text, timestamp or None if should skip
         """
         try:
-            if not row or len(row) < 6:
+            if not row or len(row) < 4:
                 return None, "invalid_row"
             
-            # Extract fields
-            original_sentiment = row[0].strip('"')
-            tweet_id = row[1].strip('"')
-            tweet_text = row[5].strip('"')
+            # Detect format by number of columns
+            if len(row) >= 6:
+                # Sentiment140 format: Sentiment, ID, Date, Query, User, Text
+                original_sentiment = row[0].strip('"')
+                tweet_id = row[1].strip('"')
+                tweet_text = row[5].strip('"')
+                sentiment_source = 'Sentiment140'
+            elif len(row) >= 4:
+                # Simple format: ItemID, Sentiment, SentimentSource, SentimentText
+                tweet_id = row[0].strip('"')
+                original_sentiment = row[1].strip('"')
+                sentiment_source = row[2].strip('"') if len(row) > 2 else 'Unknown'
+                tweet_text = row[3].strip('"') if len(row) > 3 else ''
+            else:
+                return None, "invalid_row"
             
             # Preprocess sentiment (matching preprocess_sentiment_data.py)
             processed_sentiment, should_skip = self.preprocess_sentiment(original_sentiment)
@@ -126,7 +145,7 @@ class TweetProducerEnhanced:
             return {
                 'ItemID': tweet_id,
                 'Sentiment': processed_sentiment,
-                'SentimentSource': 'Sentiment140',
+                'SentimentSource': sentiment_source,
                 'Text': cleaned_text,
                 'timestamp': int(time.time() * 1000)
             }, None
@@ -147,17 +166,82 @@ class TweetProducerEnhanced:
         logger.error(f'Message delivery failed: {exception}')
         self.stats['error_count'] += 1
     
-    def stream_from_csv(self, csv_file, rate=100, train_ratio=0.8):
+    def _process_tweet_row(self, row, rate):
+        """
+        Process a single tweet row: parse, validate, and send to Kafka
+        
+        Returns: True if successfully sent, False otherwise
+        """
+        self.stats['total_processed'] += 1
+        
+        # Parse and preprocess row
+        result, skip_reason = self.parse_csv_row(row)
+        
+        if result is None:
+            # Track why it was skipped
+            if skip_reason == "neutral":
+                self.stats['skipped_neutral'] += 1
+            elif skip_reason in ["invalid_sentiment", "invalid_row", "empty_text"]:
+                self.stats['skipped_invalid'] += 1
+            elif skip_reason == "parse_error":
+                self.stats['error_count'] += 1
+            return False
+        
+        tweet_data = result
+        
+        # Track sentiment counts
+        if tweet_data['Sentiment'] == '0':
+            self.stats['negative_count'] += 1
+        elif tweet_data['Sentiment'] == '1':
+            self.stats['positive_count'] += 1
+        
+        # Publish to testing topic only (pretrained model)
+        target_topic = 'tweets-testing'
+        self.stats['test_count'] += 1
+        
+        # Use ItemID as key for partitioning
+        key = tweet_data['ItemID']
+        
+        try:
+            # Simulate Twitter API call delay (100-200 ms)
+            api_delay = random.uniform(0.1, 0.2)  # 100-200 ms in seconds
+            time.sleep(api_delay)
+            
+            # Send to testing topic
+            future_testing = self.producer.send(
+                target_topic,
+                key=key,
+                value=tweet_data
+            )
+            future_testing.add_callback(self.delivery_success_callback)
+            future_testing.add_errback(self.delivery_error_callback)
+            
+            self.stats['sent_count'] += 1
+            
+            # Log progress
+            if self.stats['sent_count'] % 1000 == 0:
+                self._log_progress()
+            
+            # Control rate (additional delay if needed)
+            time.sleep(1.0 / rate)
+            
+            return True
+            
+        except KafkaError as e:
+            logger.error(f"Kafka error: {e}")
+            self.stats['error_count'] += 1
+            return False
+    
+    def stream_from_csv(self, csv_file, rate=100):
         """
         Stream tweets from CSV file to Kafka topics with preprocessing
         
         Args:
             csv_file: Path to CSV file
             rate: Messages per second
-            train_ratio: Ratio to split between training and testing (default 0.8)
         """
         logger.info(f"Starting to stream from {csv_file}")
-        logger.info(f"Rate: {rate} msgs/sec, Train ratio: {train_ratio}")
+        logger.info(f"Rate: {rate} msgs/sec")
         logger.info("=" * 60)
         
         start_time = time.time()
@@ -166,77 +250,20 @@ class TweetProducerEnhanced:
             with open(csv_file, 'r', encoding='utf-8', errors='replace') as f:
                 reader = csv.reader(f)
                 
-                for row_num, row in enumerate(reader, 1):
-                    self.stats['total_processed'] += 1
-                    
-                    # Parse and preprocess row
-                    result, skip_reason = self.parse_csv_row(row)
-                    
-                    if result is None:
-                        # Track why it was skipped
-                        if skip_reason == "neutral":
-                            self.stats['skipped_neutral'] += 1
-                        elif skip_reason in ["invalid_sentiment", "invalid_row", "empty_text"]:
-                            self.stats['skipped_invalid'] += 1
-                        elif skip_reason == "parse_error":
-                            self.stats['error_count'] += 1
-                        continue
-                    
-                    tweet_data = result
-                    
-                    # Track sentiment counts
-                    if tweet_data['Sentiment'] == '0':
-                        self.stats['negative_count'] += 1
-                    elif tweet_data['Sentiment'] == '1':
-                        self.stats['positive_count'] += 1
-                    
-                    # Determine if training or testing
-                    if random.random() < train_ratio:
-                        target_topic = 'tweets-training'
-                        self.stats['train_count'] += 1
+                # Check if first row is a header (skip it if it looks like a header)
+                first_row = next(reader, None)
+                if first_row and len(first_row) > 0:
+                    first_cell = first_row[0].strip('"').strip().lower()
+                    # If first cell looks like a header (contains "itemid", "sentiment", etc.), skip it
+                    if first_cell in ['itemid', 'sentiment', 'id', 'label']:
+                        logger.info("Detected CSV header row, skipping...")
                     else:
-                        target_topic = 'tweets-testing'
-                        self.stats['test_count'] += 1
-                    
-                    # Use ItemID as key for partitioning
-                    key = tweet_data['ItemID']
-                    
-                    try:
-                        # Simulate Twitter API call delay (100-200 ms)
-                        api_delay = random.uniform(0.1, 0.2)  # 100-200 ms in seconds
-                        time.sleep(api_delay)
-                        
-                        # Send to raw topic
-                        future_raw = self.producer.send(
-                            'tweets-raw',
-                            key=key,
-                            value=tweet_data
-                        )
-                        future_raw.add_callback(self.delivery_success_callback)
-                        future_raw.add_errback(self.delivery_error_callback)
-                        
-                        # Send to training/testing topic
-                        future_specific = self.producer.send(
-                            target_topic,
-                            key=key,
-                            value=tweet_data
-                        )
-                        future_specific.add_callback(self.delivery_success_callback)
-                        future_specific.add_errback(self.delivery_error_callback)
-                        
-                        self.stats['sent_count'] += 1
-                        
-                        # Log progress
-                        if self.stats['sent_count'] % 1000 == 0:
-                            self._log_progress()
-                        
-                        # Control rate (additional delay if needed)
-                        time.sleep(1.0 / rate)
-                        
-                    except KafkaError as e:
-                        logger.error(f"Kafka error: {e}")
-                        self.stats['error_count'] += 1
-                        continue
+                        # Not a header, process this row
+                        self._process_tweet_row(first_row, rate)
+                
+                # Process remaining rows
+                for row_num, row in enumerate(reader, 2):
+                    self._process_tweet_row(row, rate)
                 
         except FileNotFoundError:
             logger.error(f"File not found: {csv_file}")
@@ -274,11 +301,7 @@ class TweetProducerEnhanced:
         logger.info(f"✓ Successfully sent:     {self.stats['sent_count']:,}")
         logger.info(f"  - Positive (1):        {self.stats['positive_count']:,}")
         logger.info(f"  - Negative (0):        {self.stats['negative_count']:,}")
-        
-        if self.stats['train_count'] > 0 or self.stats['test_count'] > 0:
-            logger.info(f"  - Training set:        {self.stats['train_count']:,}")
-            logger.info(f"  - Testing set:         {self.stats['test_count']:,}")
-        
+        logger.info(f"  - Testing set:         {self.stats['test_count']:,}")
         logger.info(f"✗ Skipped neutral (2):   {self.stats['skipped_neutral']:,}")
         logger.info(f"✗ Skipped invalid:       {self.stats['skipped_invalid']:,}")
         logger.info(f"✗ Errors:                {self.stats['error_count']:,}")
@@ -297,21 +320,21 @@ class TweetProducerEnhanced:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Enhanced Kafka Producer for Tweet Sentiment Analysis with Preprocessing',
+        description='Kafka Producer for Tweet Sentiment Analysis - Testing Only (Pretrained Model)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Stream with preprocessing (fast mode)
-  python3 tweet_producer.py --csv-file training.1600000.processed.noemoticon.csv --rate 100
+  # Stream with default CSV file
+  python3 tweet_producer.py
 
-  # Custom train/test split
-  python3 tweet_producer.py --csv-file training.1600000.processed.noemoticon.csv --train-ratio 0.75
+  # Stream with custom CSV file
+  python3 tweet_producer.py --csv-file ../data/raws/tweeteval_sentiment_test.csv --rate 50
         """
     )
     parser.add_argument(
         '--csv-file',
-        required=True,
-        help='Path to CSV file with tweets (Sentiment140 format)'
+        default='../data/raws/testdata.manual.2009.06.14.csv',
+        help='Path to CSV file with tweets (Sentiment140 format). Default: data/raws/testdata.manual.2009.06.14.csv'
     )
     parser.add_argument(
         '--bootstrap-servers',
@@ -323,12 +346,6 @@ Examples:
         type=int,
         default=100,
         help='Messages per second (default: 100)'
-    )
-    parser.add_argument(
-        '--train-ratio',
-        type=float,
-        default=0.8,
-        help='Training data ratio 0.0-1.0 (default: 0.8)'
     )
     parser.add_argument(
         '--verbose',
@@ -343,19 +360,16 @@ Examples:
         logging.getLogger().setLevel(logging.DEBUG)
     
     # Validate arguments
-    if not (0.0 <= args.train_ratio <= 1.0):
-        parser.error("--train-ratio must be between 0.0 and 1.0")
-    
     if args.rate <= 0:
         parser.error("--rate must be positive")
     
     logger.info("=" * 60)
-    logger.info("ENHANCED KAFKA PRODUCER - SENTIMENT ANALYSIS")
+    logger.info("KAFKA PRODUCER - SENTIMENT ANALYSIS (TESTING ONLY)")
     logger.info("=" * 60)
     logger.info(f"Input file:       {args.csv_file}")
     logger.info(f"Kafka servers:    {args.bootstrap_servers}")
     logger.info(f"Rate:             {args.rate} msgs/sec")
-    logger.info(f"Train ratio:      {args.train_ratio}")
+    logger.info(f"Target topic:     tweets-testing")
     logger.info("=" * 60)
     logger.info("Preprocessing: Convert sentiment labels (0→0, 4→1, skip 2)")
     logger.info("=" * 60 + "\n")
@@ -364,7 +378,7 @@ Examples:
     producer = TweetProducerEnhanced(bootstrap_servers=args.bootstrap_servers)
     
     try:
-        producer.stream_from_csv(args.csv_file, args.rate, args.train_ratio)
+        producer.stream_from_csv(args.csv_file, args.rate)
     except KeyboardInterrupt:
         logger.info("\nInterrupted by user")
     except Exception as e:

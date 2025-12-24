@@ -31,13 +31,13 @@ if hdfs dfs -test -e /user/kafka_data/tweets-training/_SUCCESS 2>/dev/null; then
     echo "✓ Found Kafka training data"
     DATA_SOURCE="kafka"
 # Option 2: Check for local CSV
-elif [ -f "../data/preprocessed/training_processed.csv" ]; then
+elif [ -f "../../data/preprocessed/training_processed.csv" ]; then
     echo "✓ Found local processed CSV"
     echo "Uploading to HDFS..."
     hdfs dfs -put ../../data/preprocessed/training_processed.csv /user/kafka_data/tweets-training/
     DATA_SOURCE="csv"
 # Option 3: Check for original CSV
-elif [ -f "../data/raws/training.1600000.processed.noemoticon.csv" ]; then
+elif [ -f "../../data/raws/training.1600000.processed.noemoticon.csv" ]; then
     echo "⚠ Found original CSV (needs preprocessing)"
     echo ""
     echo "You need to preprocess the data first. Options:"

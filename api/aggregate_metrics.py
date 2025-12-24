@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Aggregate sentiment metrics periodically and store in MongoDB
 """
@@ -7,7 +6,7 @@ from pymongo import MongoClient
 from datetime import datetime, timedelta
 import time
 
-MONGO_URI = 'mongodb://sentiment_app:your_app_password@localhost:27017/sentiment_analysis'
+MONGO_URI = 'mongodb://localhost:27017/sentiment_analysis'
 client = MongoClient(MONGO_URI)
 db = client.sentiment_analysis
 

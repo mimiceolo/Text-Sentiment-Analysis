@@ -4,6 +4,12 @@ import org.apache.spark.ml.Pipeline
 import org.apache.spark.ml.feature.{HashingTF, IDF, Tokenizer, StopWordsRemover}
 import org.apache.spark.ml.classification.{NaiveBayes, LinearSVC}
 
+// spark-submit \
+//   --class TrainModels \
+//   --master "local[4]" \
+//   --driver-memory 4g \
+//   --executor-memory 4g \
+//   target/scala-2.12/sentimentanalysisstreaming_2.12-1.0.jar
 
 object TrainModels {
 

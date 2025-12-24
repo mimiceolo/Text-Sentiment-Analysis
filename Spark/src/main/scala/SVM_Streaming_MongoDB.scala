@@ -17,6 +17,15 @@ import java.util.{Date, UUID}
 
 import scala.collection.JavaConverters._
 
+// spark-submit \
+//   --class SVM_Streaming_MongoDB \
+//   --master "local[4]" \
+//   --driver-memory 4g \
+//   --executor-memory 4g \
+//   --packages \
+// org.apache.spark:spark-streaming-kafka-0-10_2.12:3.4.1,\
+// org.mongodb:mongodb-driver-sync:4.11.1 \
+//   target/scala-2.12/sentimentanalysisstreaming_2.12-1.0.jar
 
 object SVM_Streaming_MongoDB {
 
@@ -25,6 +34,27 @@ object SVM_Streaming_MongoDB {
     @transient lazy val database: MongoDatabase = mongoClient.getDatabase("sentiment_analysis")
     @transient lazy val predictionsCollection: MongoCollection[Document] = database.getCollection("predictions")
     @transient lazy val metricsCollection: MongoCollection[Document] = database.getCollection("batch_metrics")
+    
+    // Helper method to ensure MongoDB connection is accessible
+    def getPredictionsCollection: MongoCollection[Document] = {
+        try {
+            predictionsCollection
+        } catch {
+            case e: Exception =>
+                println(s"[SVM-MongoDB] Error accessing predictions collection: ${e.getMessage}")
+                throw e
+        }
+    }
+    
+    def getMetricsCollection: MongoCollection[Document] = {
+        try {
+            metricsCollection
+        } catch {
+            case e: Exception =>
+                println(s"[SVM-MongoDB] Error accessing metrics collection: ${e.getMessage}")
+                throw e
+        }
+    }
 
     def main(args: Array[String]): Unit = {
 
@@ -68,7 +98,18 @@ object SVM_Streaming_MongoDB {
                 null
         }
 
-        println("✓ MongoDB connection initialized")
+        // Explicitly initialize MongoDB connection
+        try {
+            val testConnection = predictionsCollection
+            val testMetrics = metricsCollection
+            println("✓ MongoDB connection initialized and tested")
+        } catch {
+            case e: Exception =>
+                println(s"✗ MongoDB connection failed: ${e.getMessage}")
+                e.printStackTrace()
+                System.exit(1)
+        }
+        
         println("✓ Model loaded successfully")
         println("Starting to process batches...")
 
@@ -126,9 +167,14 @@ object SVM_Streaming_MongoDB {
                         println(s"[SVM-MongoDB] Batch $batchId - Accuracy: $accuracy, F1: $f1Score")
 
                         // Convert predictions to MongoDB documents
-                        val predictionsList = predictions
+                        println(s"[SVM-MongoDB] Converting predictions to MongoDB documents...")
+                        val predictionsRows = predictions
                             .select("original_tweet_id", "tweet", "label", "prediction")
                             .collect()
+                        
+                        println(s"[SVM-MongoDB] Collected ${predictionsRows.length} prediction rows")
+                        
+                        val predictionsList = predictionsRows
                             .map { row =>
                                 new Document()
                                     .append("tweet_id", row.getString(0))
@@ -141,16 +187,26 @@ object SVM_Streaming_MongoDB {
                                     .append("correct", row.getDouble(2) == row.getDouble(3))
                             }
                             .toList.asJava
+                        
+                        println(s"[SVM-MongoDB] Created ${predictionsList.size()} MongoDB documents")
 
                         // Write predictions to MongoDB using Java driver
+                        // Note: Duplicate tweet_ids are allowed since both SVM and NB models predict the same tweets
                         try {
                             if (!predictionsList.isEmpty) {
-                                predictionsCollection.insertMany(predictionsList)
-                                println(s"[SVM-MongoDB] ✓ Wrote ${predictionsList.size()} predictions to MongoDB")
+                                println(s"[SVM-MongoDB] Attempting to write ${predictionsList.size()} predictions to MongoDB...")
+                                val collection = getPredictionsCollection
+                                println(s"[SVM-MongoDB] Collection name: ${collection.getNamespace.getCollectionName}")
+                                val result = collection.insertMany(predictionsList)
+                                println(s"[SVM-MongoDB] ✓ Successfully wrote ${predictionsList.size()} predictions to MongoDB predictions collection")
+                            } else {
+                                println(s"[SVM-MongoDB] ⚠ No predictions to write (predictionsList is empty)")
                             }
                         } catch {
                             case e: Exception =>
-                                println(s"[SVM-MongoDB] ⚠ MongoDB write failed (non-fatal): ${e.getMessage}")
+                                println(s"[SVM-MongoDB] ✗ MongoDB predictions write failed: ${e.getMessage}")
+                                println(s"[SVM-MongoDB] Exception type: ${e.getClass.getName}")
+                                e.printStackTrace()
                         }
 
                         // Write batch metrics to MongoDB
@@ -166,11 +222,16 @@ object SVM_Streaming_MongoDB {
                             .append("timestamp", new Date(batchStartTime))
 
                         try {
-                            metricsCollection.insertOne(batchMetricsDoc)
-                            println(s"[SVM-MongoDB] ✓ Wrote batch metrics to MongoDB")
+                            println(s"[SVM-MongoDB] Attempting to write batch metrics to MongoDB...")
+                            val collection = getMetricsCollection
+                            println(s"[SVM-MongoDB] Metrics collection name: ${collection.getNamespace.getCollectionName}")
+                            collection.insertOne(batchMetricsDoc)
+                            println(s"[SVM-MongoDB] ✓ Successfully wrote batch metrics to MongoDB batch_metrics collection")
                         } catch {
                             case e: Exception =>
-                                println(s"[SVM-MongoDB] ⚠ Metrics write failed (non-fatal): ${e.getMessage}")
+                                println(s"[SVM-MongoDB] ✗ Batch metrics write failed: ${e.getMessage}")
+                                println(s"[SVM-MongoDB] Exception type: ${e.getClass.getName}")
+                                e.printStackTrace()
                         }
 
                         // Also save to HDFS as backup

@@ -17,6 +17,16 @@ import java.util.{ArrayList, Date, UUID}
 
 import scala.collection.JavaConverters._
 
+// spark-submit \
+//   --class NB_Streaming_MongoDB \
+//   --master "local[4]" \
+//   --driver-memory 4g \
+//   --executor-memory 4g \
+//   --packages \
+// org.apache.spark:spark-streaming-kafka-0-10_2.12:3.4.1,\
+// org.mongodb:mongodb-driver-sync:4.11.1 \
+//   target/scala-2.12/sentimentanalysisstreaming_2.12-1.0.jar
+
 
 object NB_Streaming_MongoDB {
 

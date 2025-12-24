@@ -102,8 +102,8 @@ chmod +x tweet_producer.py
 
 # Run producer (fast mode - 100 tweets/sec)
 python3 tweet_producer.py \
-  --csv-file ../data/raws/training.1600000.processed.noemoticon.csv \
-  --rate 100
+  --csv-file ../data/raws/testdata.manual.2009.06.14.csv \
+  --rate 10
 
 # Run producer (real-time simulation - 10 tweets/sec)
 python3 tweet_producer.py \
